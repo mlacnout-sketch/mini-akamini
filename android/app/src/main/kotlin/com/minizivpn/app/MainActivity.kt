@@ -89,6 +89,7 @@ class MainActivity: FlutterActivity() {
                 val obfs = call.argument<String>("obfs") ?: "hu``hqb`c"
                 val multiplier = call.argument<Double>("recv_window_multiplier") ?: 1.0
                 val udpMode = call.argument<String>("udp_mode") ?: "tcp"
+                val proxyUrl = call.argument<String>("proxy_url") ?: "socks5://127.0.0.1:7777"
                 
                 // Advanced Settings
                 val mtu = call.argument<Int>("mtu") ?: 1500
@@ -106,6 +107,7 @@ class MainActivity: FlutterActivity() {
                     .putString("server_obfs", obfs)
                     .putFloat("multiplier", multiplier.toFloat())
                     .putString("udp_mode", udpMode)
+                    .putString("proxy_url", proxyUrl)
                     .putInt("mtu", mtu)
                     .putBoolean("auto_tuning", autoTuning)
                     .putString("buffer_size", bufferSize)
