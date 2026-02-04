@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xjasonlyu/tun2socks/v2/dialer"
+	"github.com/xjasonlyu/tun2socks/v2/log"
 	M "github.com/xjasonlyu/tun2socks/v2/metadata"
 	"github.com/xjasonlyu/tun2socks/v2/proxy"
 )
@@ -80,6 +81,7 @@ func (m *connManager) connect() error {
 	if err != nil {
 		return err
 	}
+	log.Infof("[UDPGW] Connected to BadVPN server at %s", m.addr)
 	m.tcpConn = conn
 	go m.readLoop(conn)
 	return nil
@@ -151,6 +153,7 @@ func (m *connManager) readLoop(conn net.Conn) {
 		m.vConnsMu.RUnlock()
 
 		if ok {
+			log.Debugf("[UDPGW] Received packet (ConID: %d)", conID)
 			vConn.putPacket(payload)
 		}
 	}
@@ -216,6 +219,8 @@ func (v *virtualPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	copy(buf[2+headerLen:], b)
 
 	if err := v.manager.send(buf); err != nil { return 0, err }
+	
+	log.Debugf("[UDPGW] Sent %d bytes (ConID: %d) to %s:%d", len(b), v.conID, ip, v.metadata.DstPort)
 	return len(b), nil
 }
 
