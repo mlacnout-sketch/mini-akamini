@@ -172,10 +172,16 @@ class ZivpnService : VpnService() {
                 try {
                     val udpTimeout = 60000L
                     val finalMtu = mtu.toLong()
-                    logToApp("Starting Engine: MTU=$finalMtu, Buf=$bufferSize, AutoTune=$autoTuning, Log=$logLevel")
+                    
+                    // NEW INTERNAL LOAD BALANCER FORMAT
+                    val ports = (0 until coreCount).map { 20080 + it }
+                    val lbTargets = ports.joinToString(",") { "127.0.0.1:$it" }
+                    val proxyUrl = "lb://$lbTargets?type=socks5"
+                    
+                    logToApp("Starting Engine: MTU=$finalMtu, Cores=$coreCount, LB=$proxyUrl")
                     mobile.Mobile.setLogHandler(tunLogger)
                     mobile.Mobile.start(
-                        "socks5://127.0.0.1:7777",
+                        proxyUrl,
                         "fd://$fd",
                         logLevel,
                         finalMtu,
@@ -184,7 +190,7 @@ class ZivpnService : VpnService() {
                         bufferSize, 
                         autoTuning
                     )
-                    logToApp("Tun2Socks Engine Started successfully.")
+                    logToApp("Tun2Socks Engine Started with Internal LB.")
                 } catch (e: Exception) {
                     logToApp("Engine Error: ${e.message}")
                 }
@@ -239,19 +245,7 @@ class ZivpnService : VpnService() {
         
         logToApp("Waiting for cores to warm up...")
         Thread.sleep(1500)
-
-        val lbCmd = mutableListOf(libLoad, "-lport", "7777", "-tunnel")
-        lbCmd.addAll(tunnelTargets)
-        
-        val lbPb = ProcessBuilder(lbCmd)
-        lbPb.directory(filesDir)
-        lbPb.environment()["LD_LIBRARY_PATH"] = libDir
-        lbPb.redirectErrorStream(true)
-        
-        val lbProcess = lbPb.start()
-        processes.add(lbProcess)
-        captureProcessLog(lbProcess, "LoadBalancer")
-        logToApp("Load Balancer active on port 7777")
+        logToApp("Hysteria cores active and ready.")
     }
 
     private fun disconnect() {
