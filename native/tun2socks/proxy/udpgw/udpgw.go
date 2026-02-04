@@ -8,20 +8,18 @@ import (
 	"net"
 	"net/url"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/xjasonlyu/tun2socks/v2/dialer"
-	"github.com/xjasonlyu/tun2socks/v2/log"
 	M "github.com/xjasonlyu/tun2socks/v2/metadata"
 	"github.com/xjasonlyu/tun2socks/v2/proxy"
 )
 
 const (
-	commandKeepAlive  = 0
-	commandConnect    = 1
-	commandData       = 2
-	commandDisconnect = 3
+	flagKeepAlive = 0x01
+	flagRebind    = 0x02
+	flagDNS       = 0x04
+	flagIPv6      = 0x08
 )
 
 func init() {
@@ -49,16 +47,15 @@ func (u *Udpgw) DialUDP(metadata *M.Metadata) (net.PacketConn, error) {
 	}
 	u.mu.Unlock()
 
-	return u.manager.NewVirtualConn(metadata)
+	return u.manager.NewVirtualConn(metadata), nil
 }
 
 type connManager struct {
-	addr       string
-	tcpConn    net.Conn
-	mu         sync.Mutex
-	vConns     map[uint16]*virtualPacketConn
-	vConnsMu   sync.RWMutex
-	conIDCount uint32
+	addr     string
+	tcpConn  net.Conn
+	mu       sync.Mutex
+	vConns   map[uint16]*virtualPacketConn
+	vConnsMu sync.RWMutex
 }
 
 func newConnManager(addr string) *connManager {
@@ -92,9 +89,11 @@ func (m *connManager) keepAliveLoop() {
 		time.Sleep(20 * time.Second)
 		m.mu.Lock()
 		if m.tcpConn != nil {
-			buf := make([]byte, 3)
-			binary.BigEndian.PutUint16(buf[0:2], 1) // Length 1
-			buf[2] = commandKeepAlive
+			// [Length 2b] [Flags 1b] [ConID 2b]
+			buf := make([]byte, 2+3)
+			binary.BigEndian.PutUint16(buf[0:2], 3)
+			buf[2] = flagKeepAlive
+			// ConID 0 for keepalive
 			m.tcpConn.Write(buf)
 		}
 		m.mu.Unlock()
@@ -113,30 +112,79 @@ func (m *connManager) readLoop(conn net.Conn) {
 		var lb [2]byte
 		if _, err := io.ReadFull(conn, lb[:]); err != nil { return }
 		
-		packetLen := binary.BigEndian.Uint16(lb[:])
-		if packetLen == 0 { continue }
-
-		buf := make([]byte, packetLen)
+		payloadLen := binary.BigEndian.Uint16(lb[:])
+		buf := make([]byte, payloadLen)
 		if _, err := io.ReadFull(conn, buf); err != nil { return }
 
-		cmd := buf[0]
-		if cmd == commandKeepAlive { continue }
-		
 		if len(buf) < 3 { continue }
-		conID := binary.BigEndian.Uint16(buf[1:3])
+		flags := buf[0]
+		conID := binary.LittleEndian.Uint16(buf[1:3]) // BadVPN uses Little Endian for ConID
+
+		if (flags & flagKeepAlive) != 0 { continue }
+
+		// Parse Address (Server to Client also sends address)
+		pos := 3
+		isIPv6 := (flags & flagIPv6) != 0
+		ipLen := 4
+		if isIPv6 { ipLen = 16 }
+		
+		if len(buf) < pos+ipLen+2 { continue }
+		// Skip IP/Port in response for now, we route by ConID
+		pos += ipLen + 2
+		
+		payload := buf[pos:]
 
 		m.vConnsMu.RLock()
 		vConn, ok := m.vConns[conID]
 		m.vConnsMu.RUnlock()
 
 		if ok {
-			if cmd == commandData {
-				vConn.putPacket(buf[3:])
-			} else if cmd == commandDisconnect {
-				vConn.Close()
-			}
+			vConn.putPacket(payload)
 		}
 	}
+}
+
+func (m *connManager) NewVirtualConn(metadata *M.Metadata) *virtualPacketConn {
+	// Simple ConID assignment (logic can be improved)
+	id := uint16(time.Now().UnixNano() & 0xFFFF)
+	vc := &virtualPacketConn{
+		manager:  m,
+		metadata: metadata,
+		conID:    id,
+		ch:       make(chan []byte, 200),
+	}
+	m.vConnsMu.Lock()
+	m.vConns[id] = vc
+	m.vConnsMu.Unlock()
+	return vc
+}
+
+type virtualPacketConn struct {
+	manager  *connManager
+	metadata *M.Metadata
+	conID    uint16
+	ch       chan []byte
+}
+
+func (v *virtualPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	ip := v.metadata.DstIP.AsSlice()
+	var flags uint8
+	if len(ip) == 16 { flags |= flagIPv6 }
+
+	// Header: Flags(1) + ConID(2) + IP(4/16) + Port(2)
+	headerLen := 1 + 2 + len(ip) + 2
+	totalLen := headerLen + len(b)
+	
+	buf := make([]byte, 2 + totalLen)
+	binary.BigEndian.PutUint16(buf[0:2], uint16(totalLen))
+	buf[2] = flags
+	binary.LittleEndian.PutUint16(buf[3:5], v.conID)
+	copy(buf[5:5+len(ip)], ip)
+	binary.BigEndian.PutUint16(buf[5+len(ip):2+headerLen], uint16(v.metadata.DstPort))
+	copy(buf[2+headerLen:], b)
+
+	if err := v.manager.send(buf); err != nil { return 0, err }
+	return len(b), nil
 }
 
 func (m *connManager) send(b []byte) error {
@@ -147,69 +195,12 @@ func (m *connManager) send(b []byte) error {
 	return err
 }
 
-func (m *connManager) NewVirtualConn(metadata *M.Metadata) (*virtualPacketConn, error) {
-	id := uint16(atomic.AddUint32(&m.conIDCount, 1) % 65535)
-	vc := &virtualPacketConn{
-		manager:  m,
-		metadata: metadata,
-		conID:    id,
-		ch:       make(chan []byte, 200),
-	}
-
-	m.vConnsMu.Lock()
-	m.vConns[id] = vc
-	m.vConnsMu.Unlock()
-
-	// Send CONNECT Command
-	ip := metadata.DstIP.AsSlice()
-	addrType := byte(1) // IPv4
-	if len(ip) == 16 { addrType = 2 }
-
-	headerLen := 1 + 2 + 1 + len(ip) + 2
-	buf := make([]byte, 2 + headerLen)
-	binary.BigEndian.PutUint16(buf[0:2], uint16(headerLen))
-	buf[2] = commandConnect
-	binary.BigEndian.PutUint16(buf[3:5], id)
-	buf[5] = addrType
-	copy(buf[6:6+len(ip)], ip)
-	binary.BigEndian.PutUint16(buf[6+len(ip):], uint16(metadata.DstPort))
-
-	if err := m.send(buf); err != nil {
-		return nil, err
-	}
-
-	return vc, nil
-}
-
-type virtualPacketConn struct {
-	manager  *connManager
-	metadata *M.Metadata
-	conID    uint16
-	ch       chan []byte
-	closed   bool
-}
-
-func (v *virtualPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
-	if v.closed { return 0, fmt.Errorf("closed") }
-	
-	headerLen := 1 + 2 + len(b)
-	buf := make([]byte, 2 + headerLen)
-	binary.BigEndian.PutUint16(buf[0:2], uint16(headerLen))
-	buf[2] = commandData
-	binary.BigEndian.PutUint16(buf[3:5], v.conID)
-	copy(buf[5:], b)
-
-	if err := v.manager.send(buf); err != nil { return 0, err }
-	return len(b), nil
-}
-
 func (v *virtualPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	select {
 	case p := <-v.ch:
-		n := copy(b, p)
-		return n, v.metadata.UDPAddr(), nil
-	case <-time.After(60 * time.Second):
-		return 0, nil, fmt.Errorf("read timeout")
+		return copy(b, p), v.metadata.UDPAddr(), nil
+	case <-time.After(30 * time.Second):
+		return 0, nil, fmt.Errorf("timeout")
 	}
 }
 
@@ -221,25 +212,15 @@ func (v *virtualPacketConn) putPacket(data []byte) {
 }
 
 func (v *virtualPacketConn) Close() error {
-	if v.closed { return nil }
-	v.closed = true
-	
-	// Send DISCONNECT Command
-	buf := make([]byte, 5)
-	binary.BigEndian.PutUint16(buf[0:2], 3) // Len 3
-	buf[2] = commandDisconnect
-	binary.BigEndian.PutUint16(buf[3:5], v.conID)
-	v.manager.send(buf)
-
 	v.manager.vConnsMu.Lock()
 	delete(v.manager.vConns, v.conID)
 	v.manager.vConnsMu.Unlock()
 	return nil
 }
 
-func (v *virtualPacketConn) LocalAddr() net.Addr { return &net.UDPAddr{IP: net.IPv4zero, Port: 0} }
-func (v *virtualPacketConn) SetDeadline(t time.Time) error      { return nil }
-func (v *virtualPacketConn) SetReadDeadline(t time.Time) error  { return nil }
+func (v *virtualPacketConn) LocalAddr() net.Addr { return &net.UDPAddr{} }
+func (v *virtualPacketConn) SetDeadline(t time.Time) error { return nil }
+func (v *virtualPacketConn) SetReadDeadline(t time.Time) error { return nil }
 func (v *virtualPacketConn) SetWriteDeadline(t time.Time) error { return nil }
 
 func Parse(u *url.URL) (proxy.Proxy, error) {
