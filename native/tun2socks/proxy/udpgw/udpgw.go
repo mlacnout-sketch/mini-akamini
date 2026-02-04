@@ -76,7 +76,6 @@ func (m *connManager) connect() error {
 		return nil
 	}
 
-	// Use a longer timeout for the shared TCP connection
 	conn, err := dialer.DialContext(context.Background(), "tcp", m.addr)
 	if err != nil {
 		return err
@@ -88,14 +87,18 @@ func (m *connManager) connect() error {
 
 func (m *connManager) keepAliveLoop() {
 	for {
-		time.Sleep(20 * time.Second)
+		time.Sleep(15 * time.Second)
 		m.mu.Lock()
 		if m.tcpConn != nil {
-			// BadVPN KeepAlive: [Len=1 (2b)] [Flags=KeepAlive (1b)]
-			// Note: KeepAlive packet doesn't send ConID in original C implementation if length is 1
-			buf := make([]byte, 3)
-			binary.BigEndian.PutUint16(buf[0:2], 1)
+			// BadVPN KeepAlive Packet:
+			// Frame Length: 3 bytes (Flags + ConID)
+			// Body: [Flags=0x01] [ConID=0x0000]
+			
+			buf := make([]byte, 2+3)
+			binary.BigEndian.PutUint16(buf[0:2], 3)
 			buf[2] = flagKeepAlive
+			binary.LittleEndian.PutUint16(buf[3:5], 0)
+			
 			m.tcpConn.Write(buf)
 		}
 		m.mu.Unlock()
@@ -120,21 +123,25 @@ func (m *connManager) readLoop(conn net.Conn) {
 		buf := make([]byte, packetLen)
 		if _, err := io.ReadFull(conn, buf); err != nil { return }
 
+		// Minimum header size: Flags(1) + ConID(2) = 3 bytes
+		if len(buf) < 3 { continue }
+		
 		flags := buf[0]
 		if (flags & flagKeepAlive) != 0 { continue }
 
-		if len(buf) < 3 { continue }
 		conID := binary.LittleEndian.Uint16(buf[1:3])
 
-		// Logic from udpgw.c: connection_send_to_client (server -> client)
+		// Server response format includes Address (IP+Port)
 		// Header(3) + Address(4/16 + 2) + Payload
+		
 		pos := 3
 		isIPv6 := (flags & flagIPv6) != 0
 		ipLen := 4
 		if isIPv6 { ipLen = 16 }
 		
 		if len(buf) < pos+ipLen+2 { continue }
-		// We skip reading the address because we route by ConID
+		
+		// Skip address part (we route using ConID, assuming server respects it)
 		pos += ipLen + 2
 		
 		payload := buf[pos:]
@@ -150,8 +157,9 @@ func (m *connManager) readLoop(conn net.Conn) {
 }
 
 func (m *connManager) NewVirtualConn(metadata *M.Metadata) *virtualPacketConn {
-	// Generate a unique ConID (using timestamp bits like badvpn-tun2socks)
+	// Generate random ConID to avoid collision/stale state on server
 	id := uint16(time.Now().UnixNano() & 0xFFFF)
+	
 	vc := &virtualPacketConn{
 		manager:  m,
 		metadata: metadata,
@@ -180,17 +188,31 @@ func (v *virtualPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 		ipLen = 16
 	}
 
-	// BadVPN Client Header Structure:
-	// [Flags 1b] [ConID 2b (LittleEndian)] [IP 4/16b] [Port 2b (BigEndian)]
-	headerLen := 1 + 2 + ipLen + 2
+	// Client Request Format:
+	// [Length (2b BE)] 
+	// [Flags (1b)] 
+	// [ConID (2b LE)] 
+	// [IP (4/16b)] 
+	// [Port (2b BE)] 
+	// [Payload]
+	
+	headerLen := 3 + ipLen + 2
 	totalLen := headerLen + len(b)
 	
 	buf := make([]byte, 2 + totalLen)
-	binary.BigEndian.PutUint16(buf[0:2], uint16(totalLen)) // Framing length
+	
+	// Frame Length
+	binary.BigEndian.PutUint16(buf[0:2], uint16(totalLen)) 
+	
+	// Header
 	buf[2] = flags
 	binary.LittleEndian.PutUint16(buf[3:5], v.conID)
+	
+	// Address
 	copy(buf[5:5+ipLen], ip)
 	binary.BigEndian.PutUint16(buf[5+ipLen:2+headerLen], uint16(v.metadata.DstPort))
+	
+	// Payload
 	copy(buf[2+headerLen:], b)
 
 	if err := v.manager.send(buf); err != nil { return 0, err }
