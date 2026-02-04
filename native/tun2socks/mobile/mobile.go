@@ -7,6 +7,8 @@ import (
 	"github.com/xjasonlyu/tun2socks/v2/engine"
 	"github.com/xjasonlyu/tun2socks/v2/log"
 	_ "github.com/xjasonlyu/tun2socks/v2/dns"
+	_ "github.com/xjasonlyu/tun2socks/v2/proxy/split"
+	_ "github.com/xjasonlyu/tun2socks/v2/proxy/udpgw"
 )
 
 type LogHandler interface {

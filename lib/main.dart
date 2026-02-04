@@ -137,12 +137,19 @@ class _HomePageState extends State<HomePage> {
       }
 
       try {
+        String gateway = prefs.getString('udp_gateway') ?? "";
+        String proxyUrl = "socks5://127.0.0.1:7777";
+        if (gateway.isNotEmpty) {
+          proxyUrl = "split://127.0.0.1:7777?udp=udpgw://$gateway";
+        }
+
         await platform.invokeMethod('startCore', {
           "ip": ip,
           "port_range": prefs.getString('port_range') ?? "6000-19999",
           "pass": prefs.getString('auth') ?? "",
           "obfs": prefs.getString('obfs') ?? "hu``hqb`c",
           "recv_window_multiplier": 4.0,
+          "proxy_url": proxyUrl,
           "udp_mode": "udp",
           "mtu": int.tryParse(prefs.getString('mtu') ?? "1500") ?? 1500,
           "auto_tuning": prefs.getBool('auto_tuning') ?? true,
@@ -480,6 +487,7 @@ class _SettingsTabState extends State<SettingsTab> {
   final _authCtrl = TextEditingController();
   final _obfsCtrl = TextEditingController();
   final _mtuCtrl = TextEditingController();
+  final _udpGatewayCtrl = TextEditingController();
   
   bool _autoTuning = true;
   String _bufferSize = "4m";
@@ -499,6 +507,7 @@ class _SettingsTabState extends State<SettingsTab> {
       _authCtrl.text = prefs.getString('auth') ?? "";
       _obfsCtrl.text = prefs.getString('obfs') ?? "hu``hqb`c";
       _mtuCtrl.text = prefs.getString('mtu') ?? "1500";
+      _udpGatewayCtrl.text = prefs.getString('udp_gateway') ?? "";
       _autoTuning = prefs.getBool('auto_tuning') ?? true;
       _bufferSize = prefs.getString('buffer_size') ?? "4m";
       _logLevel = prefs.getString('log_level') ?? "info";
@@ -512,6 +521,7 @@ class _SettingsTabState extends State<SettingsTab> {
     await prefs.setString('auth', _authCtrl.text);
     await prefs.setString('obfs', _obfsCtrl.text);
     await prefs.setString('mtu', _mtuCtrl.text);
+    await prefs.setString('udp_gateway', _udpGatewayCtrl.text);
     await prefs.setBool('auto_tuning', _autoTuning);
     await prefs.setString('buffer_size', _bufferSize);
     await prefs.setString('log_level', _logLevel);
@@ -542,6 +552,8 @@ class _SettingsTabState extends State<SettingsTab> {
             child: Column(
               children: [
                 _buildInput(_mtuCtrl, "MTU (Default: 1500)", Icons.settings_ethernet),
+                const SizedBox(height: 15),
+                _buildInput(_udpGatewayCtrl, "UDP Gateway (e.g. 1.2.3.4:7300)", Icons.Directions_transit),
                 const SizedBox(height: 15),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
