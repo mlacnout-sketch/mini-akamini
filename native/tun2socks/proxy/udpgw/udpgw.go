@@ -225,4 +225,4 @@ func (v *virtualPacketConn) SetWriteDeadline(t time.Time) error { return nil }
 
 func Parse(u *url.URL) (proxy.Proxy, error) {
 	return New(u.Host), nil
-}
+}// Protocol cloned from original udpgw.c
