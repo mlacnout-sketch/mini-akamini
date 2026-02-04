@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"runtime/debug"
 	"time"
 
 	"github.com/xjasonlyu/tun2socks/v2/engine"
@@ -21,6 +22,9 @@ func SetLogHandler(h LogHandler) {
 // Start starts the tun2socks engine with the given parameters.
 // udpTimeout is in milliseconds.
 func Start(proxy, device, loglevel string, mtu int, udpTimeout int64, snb, rcb string, autotune bool) error {
+	// Optimization: Set GC target to 20% to keep RAM usage low on mobile devices
+	debug.SetGCPercent(20)
+
 	key := &engine.Key{
 		Proxy:                    proxy,
 		Device:                   device,

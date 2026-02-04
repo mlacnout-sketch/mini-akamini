@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"syscall"
+	"time"
 
 	"go.uber.org/atomic"
 )
@@ -58,6 +59,8 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 
 func (*Dialer) DialContextWithOptions(ctx context.Context, network, address string, opts *Options) (net.Conn, error) {
 	d := &net.Dialer{
+		KeepAlive: 30 * time.Second, // Optimize for mobile networks
+		Timeout:   15 * time.Second, // Fail fast to recover quickly
 		Control: func(network, address string, c syscall.RawConn) error {
 			return setSocketOptions(network, address, c, opts)
 		},
