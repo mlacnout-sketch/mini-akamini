@@ -138,13 +138,16 @@ class _HomePageState extends State<HomePage> {
 
       try {
         String gateway = prefs.getString('udp_gateway') ?? "";
+        String protocol = prefs.getString('udp_protocol') ?? "BadVPN";
         String proxyUrl = "socks5://127.0.0.1:7777";
+        
         if (gateway.isNotEmpty) {
-          String udpUrl = gateway;
-          if (!gateway.startsWith("udpgw://") && !gateway.startsWith("relay://")) {
-             udpUrl = "udpgw://$gateway";
+          String scheme = (protocol == "GOST") ? "relay://" : "udpgw://";
+          // If user manually typed scheme, respect it, otherwise prepend
+          if (!gateway.contains("://")) {
+             gateway = "$scheme$gateway";
           }
-          proxyUrl = "split://127.0.0.1:7777?udp=$udpUrl";
+          proxyUrl = "split://127.0.0.1:7777?udp=$gateway";
         }
 
         await platform.invokeMethod('startCore', {
@@ -496,6 +499,7 @@ class _SettingsTabState extends State<SettingsTab> {
   bool _autoTuning = true;
   String _bufferSize = "4m";
   String _logLevel = "info";
+  String _udpProtocol = "BadVPN"; // BadVPN, GOST
   double _coreCount = 4.0;
 
   @override
@@ -512,6 +516,7 @@ class _SettingsTabState extends State<SettingsTab> {
       _obfsCtrl.text = prefs.getString('obfs') ?? "hu``hqb`c";
       _mtuCtrl.text = prefs.getString('mtu') ?? "1500";
       _udpGatewayCtrl.text = prefs.getString('udp_gateway') ?? "127.0.0.1:7300";
+      _udpProtocol = prefs.getString('udp_protocol') ?? "BadVPN";
       _autoTuning = prefs.getBool('auto_tuning') ?? true;
       _bufferSize = prefs.getString('buffer_size') ?? "4m";
       _logLevel = prefs.getString('log_level') ?? "info";
@@ -526,6 +531,7 @@ class _SettingsTabState extends State<SettingsTab> {
     await prefs.setString('obfs', _obfsCtrl.text);
     await prefs.setString('mtu', _mtuCtrl.text);
     await prefs.setString('udp_gateway', _udpGatewayCtrl.text);
+    await prefs.setString('udp_protocol', _udpProtocol);
     await prefs.setBool('auto_tuning', _autoTuning);
     await prefs.setString('buffer_size', _bufferSize);
     await prefs.setString('log_level', _logLevel);
@@ -557,7 +563,29 @@ class _SettingsTabState extends State<SettingsTab> {
               children: [
                 _buildInput(_mtuCtrl, "MTU (Default: 1500)", Icons.settings_ethernet),
                 const SizedBox(height: 15),
-                _buildInput(_udpGatewayCtrl, "UDP Gateway (Default: 127.0.0.1:7300)", Icons.directions_transit),
+                InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: "UDP Protocol",
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: const Color(0xFF272736),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _udpProtocol,
+                      isExpanded: true,
+                      dropdownColor: const Color(0xFF272736),
+                      items: const [
+                        DropdownMenuItem(value: "BadVPN", child: Text("BadVPN (Standard)")),
+                        DropdownMenuItem(value: "GOST", child: Text("GOST Relay (Modern)")),
+                      ],
+                      onChanged: (val) => setState(() => _udpProtocol = val!),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                _buildInput(_udpGatewayCtrl, "UDP Gateway Address (e.g. 1.2.3.4:7300)", Icons.directions_transit),
                 const SizedBox(height: 15),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
