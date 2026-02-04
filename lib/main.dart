@@ -140,7 +140,11 @@ class _HomePageState extends State<HomePage> {
         String gateway = prefs.getString('udp_gateway') ?? "";
         String proxyUrl = "socks5://127.0.0.1:7777";
         if (gateway.isNotEmpty) {
-          proxyUrl = "split://127.0.0.1:7777?udp=udpgw://$gateway";
+          String udpUrl = gateway;
+          if (!gateway.startsWith("udpgw://") && !gateway.startsWith("relay://")) {
+             udpUrl = "udpgw://$gateway";
+          }
+          proxyUrl = "split://127.0.0.1:7777?udp=$udpUrl";
         }
 
         await platform.invokeMethod('startCore', {
