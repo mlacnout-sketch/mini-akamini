@@ -101,6 +101,7 @@ class ZivpnService : VpnService() {
         val bufferSize = prefs.getString("buffer_size", "4m") ?: "4m"
         val logLevel = prefs.getString("log_level", "info") ?: "info"
         val coreCount = prefs.getInt("core_count", 4)
+        val proxyUrl = prefs.getString("proxy_url", "socks5://127.0.0.1:7777") ?: "socks5://127.0.0.1:7777"
 
         // 1. START HYSTERIA & LOAD BALANCER
         try {
@@ -175,7 +176,7 @@ class ZivpnService : VpnService() {
                     logToApp("Starting Engine: MTU=$finalMtu, Buf=$bufferSize, AutoTune=$autoTuning, Log=$logLevel")
                     mobile.Mobile.setLogHandler(tunLogger)
                     mobile.Mobile.start(
-                        "socks5://127.0.0.1:7777",
+                        proxyUrl,
                         "fd://$fd",
                         logLevel,
                         finalMtu,
