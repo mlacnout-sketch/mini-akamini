@@ -507,7 +507,7 @@ class _SettingsTabState extends State<SettingsTab> {
       _authCtrl.text = prefs.getString('auth') ?? "";
       _obfsCtrl.text = prefs.getString('obfs') ?? "hu``hqb`c";
       _mtuCtrl.text = prefs.getString('mtu') ?? "1500";
-      _udpGatewayCtrl.text = prefs.getString('udp_gateway') ?? "";
+      _udpGatewayCtrl.text = prefs.getString('udp_gateway') ?? "127.0.0.1:7300";
       _autoTuning = prefs.getBool('auto_tuning') ?? true;
       _bufferSize = prefs.getString('buffer_size') ?? "4m";
       _logLevel = prefs.getString('log_level') ?? "info";
@@ -553,7 +553,7 @@ class _SettingsTabState extends State<SettingsTab> {
               children: [
                 _buildInput(_mtuCtrl, "MTU (Default: 1500)", Icons.settings_ethernet),
                 const SizedBox(height: 15),
-                _buildInput(_udpGatewayCtrl, "UDP Gateway (e.g. 1.2.3.4:7300)", Icons.Directions_transit),
+                _buildInput(_udpGatewayCtrl, "UDP Gateway (Default: 127.0.0.1:7300)", Icons.Directions_transit),
                 const SizedBox(height: 15),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
