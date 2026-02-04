@@ -194,7 +194,7 @@ class ZivpnService : VpnService() {
             Thread {
                 try {
                     val udpTimeout = 60000L
-                    val safeMtu = 1400 // Safe MTU to avoid fragmentation over Hysteria
+                    val safeMtu = 1400L // Safe MTU to avoid fragmentation over Hysteria
                     logToApp("Starting Engine with MTU $safeMtu...")
                     mobile.Mobile.setLogHandler(tunLogger)
                     mobile.Mobile.start(
