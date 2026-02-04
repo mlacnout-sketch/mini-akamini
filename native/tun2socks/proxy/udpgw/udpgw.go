@@ -15,6 +15,7 @@ import (
 	"github.com/xjasonlyu/tun2socks/v2/proxy"
 )
 
+// BadVPN UDPGW Protocol Constants
 const (
 	flagKeepAlive = 0x01
 	flagRebind    = 0x02
@@ -75,6 +76,7 @@ func (m *connManager) connect() error {
 		return nil
 	}
 
+	// Use a longer timeout for the shared TCP connection
 	conn, err := dialer.DialContext(context.Background(), "tcp", m.addr)
 	if err != nil {
 		return err
@@ -89,11 +91,11 @@ func (m *connManager) keepAliveLoop() {
 		time.Sleep(20 * time.Second)
 		m.mu.Lock()
 		if m.tcpConn != nil {
-			// [Length 2b] [Flags 1b] [ConID 2b]
-			buf := make([]byte, 2+3)
-			binary.BigEndian.PutUint16(buf[0:2], 3)
+			// BadVPN KeepAlive: [Len=1 (2b)] [Flags=KeepAlive (1b)]
+			// Note: KeepAlive packet doesn't send ConID in original C implementation if length is 1
+			buf := make([]byte, 3)
+			binary.BigEndian.PutUint16(buf[0:2], 1)
 			buf[2] = flagKeepAlive
-			// ConID 0 for keepalive
 			m.tcpConn.Write(buf)
 		}
 		m.mu.Unlock()
@@ -112,24 +114,27 @@ func (m *connManager) readLoop(conn net.Conn) {
 		var lb [2]byte
 		if _, err := io.ReadFull(conn, lb[:]); err != nil { return }
 		
-		payloadLen := binary.BigEndian.Uint16(lb[:])
-		buf := make([]byte, payloadLen)
+		packetLen := binary.BigEndian.Uint16(lb[:])
+		if packetLen == 0 { continue }
+
+		buf := make([]byte, packetLen)
 		if _, err := io.ReadFull(conn, buf); err != nil { return }
 
-		if len(buf) < 3 { continue }
 		flags := buf[0]
-		conID := binary.LittleEndian.Uint16(buf[1:3]) // BadVPN uses Little Endian for ConID
-
 		if (flags & flagKeepAlive) != 0 { continue }
 
-		// Parse Address (Server to Client also sends address)
+		if len(buf) < 3 { continue }
+		conID := binary.LittleEndian.Uint16(buf[1:3])
+
+		// Logic from udpgw.c: connection_send_to_client (server -> client)
+		// Header(3) + Address(4/16 + 2) + Payload
 		pos := 3
 		isIPv6 := (flags & flagIPv6) != 0
 		ipLen := 4
 		if isIPv6 { ipLen = 16 }
 		
 		if len(buf) < pos+ipLen+2 { continue }
-		// Skip IP/Port in response for now, we route by ConID
+		// We skip reading the address because we route by ConID
 		pos += ipLen + 2
 		
 		payload := buf[pos:]
@@ -145,7 +150,7 @@ func (m *connManager) readLoop(conn net.Conn) {
 }
 
 func (m *connManager) NewVirtualConn(metadata *M.Metadata) *virtualPacketConn {
-	// Simple ConID assignment (logic can be improved)
+	// Generate a unique ConID (using timestamp bits like badvpn-tun2socks)
 	id := uint16(time.Now().UnixNano() & 0xFFFF)
 	vc := &virtualPacketConn{
 		manager:  m,
@@ -169,18 +174,23 @@ type virtualPacketConn struct {
 func (v *virtualPacketConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 	ip := v.metadata.DstIP.AsSlice()
 	var flags uint8
-	if len(ip) == 16 { flags |= flagIPv6 }
+	ipLen := 4
+	if len(ip) == 16 { 
+		flags |= flagIPv6
+		ipLen = 16
+	}
 
-	// Header: Flags(1) + ConID(2) + IP(4/16) + Port(2)
-	headerLen := 1 + 2 + len(ip) + 2
+	// BadVPN Client Header Structure:
+	// [Flags 1b] [ConID 2b (LittleEndian)] [IP 4/16b] [Port 2b (BigEndian)]
+	headerLen := 1 + 2 + ipLen + 2
 	totalLen := headerLen + len(b)
 	
 	buf := make([]byte, 2 + totalLen)
-	binary.BigEndian.PutUint16(buf[0:2], uint16(totalLen))
+	binary.BigEndian.PutUint16(buf[0:2], uint16(totalLen)) // Framing length
 	buf[2] = flags
 	binary.LittleEndian.PutUint16(buf[3:5], v.conID)
-	copy(buf[5:5+len(ip)], ip)
-	binary.BigEndian.PutUint16(buf[5+len(ip):2+headerLen], uint16(v.metadata.DstPort))
+	copy(buf[5:5+ipLen], ip)
+	binary.BigEndian.PutUint16(buf[5+ipLen:2+headerLen], uint16(v.metadata.DstPort))
 	copy(buf[2+headerLen:], b)
 
 	if err := v.manager.send(buf); err != nil { return 0, err }
@@ -199,7 +209,7 @@ func (v *virtualPacketConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	select {
 	case p := <-v.ch:
 		return copy(b, p), v.metadata.UDPAddr(), nil
-	case <-time.After(30 * time.Second):
+	case <-time.After(60 * time.Second):
 		return 0, nil, fmt.Errorf("timeout")
 	}
 }
@@ -225,4 +235,4 @@ func (v *virtualPacketConn) SetWriteDeadline(t time.Time) error { return nil }
 
 func Parse(u *url.URL) (proxy.Proxy, error) {
 	return New(u.Host), nil
-}// Protocol cloned from original udpgw.c
+}

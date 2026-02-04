@@ -553,7 +553,7 @@ class _SettingsTabState extends State<SettingsTab> {
               children: [
                 _buildInput(_mtuCtrl, "MTU (Default: 1500)", Icons.settings_ethernet),
                 const SizedBox(height: 15),
-                _buildInput(_udpGatewayCtrl, "UDP Gateway (Default: 127.0.0.1:7300)", Icons.Directions_transit),
+                _buildInput(_udpGatewayCtrl, "UDP Gateway (Default: 127.0.0.1:7300)", Icons.directions_transit),
                 const SizedBox(height: 15),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
