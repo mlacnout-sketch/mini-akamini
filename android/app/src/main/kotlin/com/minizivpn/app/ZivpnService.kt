@@ -40,6 +40,10 @@ class ZivpnService : VpnService() {
     }
 
     private fun logToApp(msg: String) {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        val currentLevel = prefs.getString("log_level", "info") ?: "info"
+        if (currentLevel == "silent") return
+
         val intent = Intent(ACTION_LOG)
         intent.putExtra("message", msg)
         sendBroadcast(intent)
