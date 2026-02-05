@@ -30,6 +30,7 @@ class ZivpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private val processes = mutableListOf<Process>()
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     private val tunLogger = object : mobile.LogHandler {
         override fun writeLog(message: String?) {
@@ -90,6 +91,11 @@ class ZivpnService : VpnService() {
 
     private fun connect() {
         if (vpnInterface != null) return
+
+        // 0. Acquire WakeLock to keep CPU alive
+        val pm = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ZIVPN::WatchdogLock")
+        wakeLock?.acquire(10 * 60 * 1000L /*10 minutes fallback*/)
 
         Log.i("ZIVPN-Tun", "Initializing ZIVPN (tun2socks engine)...")
         
@@ -279,6 +285,11 @@ class ZivpnService : VpnService() {
 
         vpnInterface?.close()
         vpnInterface = null
+        
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
+        wakeLock = null
         
         val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
         prefs.edit().putBoolean("flutter.vpn_running", false).apply()
