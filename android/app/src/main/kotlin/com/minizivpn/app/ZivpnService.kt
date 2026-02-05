@@ -5,6 +5,8 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.app.PendingIntent
+import android.os.Handler
+import android.os.Looper
 import java.net.InetAddress
 import java.util.LinkedList
 import androidx.annotation.Keep
@@ -50,7 +52,7 @@ class ZivpnService : VpnService() {
         intent.action = ACTION_DISCONNECT
         startService(intent)
         
-        Handler(Looper.getMainLooper()).postDelayed({
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             val connectIntent = Intent(this, ZivpnService::class.java)
             connectIntent.action = ACTION_CONNECT
             startService(connectIntent)
@@ -209,6 +211,9 @@ class ZivpnService : VpnService() {
                     val lbTargets = ports.joinToString(",") { "127.0.0.1:$it" }
                     val proxyUrl = "lb://$lbTargets?type=socks5"
                     
+                    // Combined Options String to ensure JNI stability
+                    val options = "autotune=$autoTuning,reconnect=$autoReconnect"
+                    
                     logToApp("Starting Engine: MTU=$finalMtu, Cores=$coreCount, LB=$proxyUrl")
                     mobile.Mobile.setLogHandler(tunLogger)
                     mobile.Mobile.start(
@@ -219,8 +224,7 @@ class ZivpnService : VpnService() {
                         udpTimeout,
                         bufferSize, 
                         bufferSize, 
-                        autoTuning,
-                        autoReconnect
+                        options
                     )
                     logToApp("Tun2Socks Engine Started with Internal LB.")
                 } catch (e: Exception) {
