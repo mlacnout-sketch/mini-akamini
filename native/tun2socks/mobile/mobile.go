@@ -63,8 +63,13 @@ func sendDummyPacket() {
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err == nil {
 		defer conn.Close()
-		// Small 24-byte dummy DNS-like query or just random data
-		conn.Write([]byte("ZIVPN-TURBO-KEEP-ALIVE"))
+		// Create a 500KB dummy payload
+		dummyPayload := make([]byte, 500*1024)
+		// Fill with some data to avoid compression by ISP
+		for i := range dummyPayload {
+			dummyPayload[i] = byte(i % 256)
+		}
+		conn.Write(dummyPayload)
 	}
 }
 
