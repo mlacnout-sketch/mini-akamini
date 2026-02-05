@@ -35,9 +35,26 @@ class ZivpnService : VpnService() {
     private val tunLogger = object : mobile.LogHandler {
         override fun writeLog(message: String?) {
             if (message != null) {
-                logToApp("[Tun2Socks] $message")
+                if (message.contains("[WATCHDOG] ACTION_RESTART")) {
+                    logToApp("!!! Watchdog triggered restart !!!")
+                    restartService()
+                } else {
+                    logToApp("[Tun2Socks] $message")
+                }
             }
         }
+    }
+
+    private fun restartService() {
+        val intent = Intent(this, ZivpnService::class.java)
+        intent.action = ACTION_DISCONNECT
+        startService(intent)
+        
+        Handler(Looper.getMainLooper()).postDelayed({
+            val connectIntent = Intent(this, ZivpnService::class.java)
+            connectIntent.action = ACTION_CONNECT
+            startService(connectIntent)
+        }, 2000)
     }
 
     private fun logToApp(msg: String) {
@@ -202,7 +219,8 @@ class ZivpnService : VpnService() {
                         udpTimeout,
                         bufferSize, 
                         bufferSize, 
-                        autoTuning
+                        autoTuning,
+                        autoReconnect
                     )
                     logToApp("Tun2Socks Engine Started with Internal LB.")
                 } catch (e: Exception) {
