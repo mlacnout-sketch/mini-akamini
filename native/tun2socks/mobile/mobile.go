@@ -1,6 +1,7 @@
 package mobile
 
 import (
+	"net"
 	"runtime/debug"
 	"time"
 
