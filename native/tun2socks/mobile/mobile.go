@@ -21,11 +21,16 @@ func SetLogHandler(h LogHandler) {
 	}
 }
 
+var (
+	currentMTU int = 1500
+)
+
 // Start starts the tun2socks engine with the given parameters.
 // udpTimeout is in milliseconds.
 func Start(proxy, device, loglevel string, mtu int, udpTimeout int64, snb, rcb string, autotune bool) error {
 	// Optimization: Set GC target to 20% to keep RAM usage low on mobile devices
 	debug.SetGCPercent(20)
+	currentMTU = mtu
 
 	key := &engine.Key{
 		Proxy:                    proxy,
@@ -49,7 +54,7 @@ func Start(proxy, device, loglevel string, mtu int, udpTimeout int64, snb, rcb s
 
 			// 2. Log status
 			if loglevel != "silent" {
-				log.Infof("[Watchdog] Heartbeat Sent. Stats: RAM=%d MB", getMemUsage())
+				log.Infof("[Watchdog] Heartbeat Sent (MTU: %d). Stats: RAM=%d MB", currentMTU, getMemUsage())
 			}
 		}
 	}()
@@ -64,17 +69,20 @@ func sendDummyPacket() {
 	if err == nil {
 		defer conn.Close()
 		
-		// Create a small 1KB chunk
-		chunk := make([]byte, 1024)
+		// Dynamic size calculation: MTU - 20 (IP) - 8 (UDP)
+		safeSize := currentMTU - 28
+		if safeSize <= 0 { safeSize = 1024 }
+		
+		chunk := make([]byte, safeSize)
 		for i := range chunk {
 			chunk[i] = byte(i % 256)
 		}
 
-		// Send 500 chunks to total ~500KB
-		// This ensures each packet is below standard MTU (1500)
-		for i := 0; i < 500; i++ {
+		// Calculate how many chunks needed to reach ~500KB
+		count := (500 * 1024) / safeSize
+
+		for i := 0; i < count; i++ {
 			conn.Write(chunk)
-			// Small sleep to avoid overwhelming the local network buffer
 			if i % 10 == 0 {
 				time.Sleep(1 * time.Millisecond)
 			}
