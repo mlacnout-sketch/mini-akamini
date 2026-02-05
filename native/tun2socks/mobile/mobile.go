@@ -63,13 +63,22 @@ func sendDummyPacket() {
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err == nil {
 		defer conn.Close()
-		// Create a 500KB dummy payload
-		dummyPayload := make([]byte, 500*1024)
-		// Fill with some data to avoid compression by ISP
-		for i := range dummyPayload {
-			dummyPayload[i] = byte(i % 256)
+		
+		// Create a small 1KB chunk
+		chunk := make([]byte, 1024)
+		for i := range chunk {
+			chunk[i] = byte(i % 256)
 		}
-		conn.Write(dummyPayload)
+
+		// Send 500 chunks to total ~500KB
+		// This ensures each packet is below standard MTU (1500)
+		for i := 0; i < 500; i++ {
+			conn.Write(chunk)
+			// Small sleep to avoid overwhelming the local network buffer
+			if i % 10 == 0 {
+				time.Sleep(1 * time.Millisecond)
+			}
+		}
 	}
 }
 
