@@ -2,7 +2,7 @@ name: ZIVPN Production Build
 
 on:
   push:
-    branches: [ "main", "feat/tun2socks-integration", "feat/internal-lb" ]
+    branches: [ "main", "feat/tun2socks-integration", "feat/internal-lb", "feat/udpgw-relay", "feat/smart-lb*" ]
   workflow_dispatch:
 
 jobs:
