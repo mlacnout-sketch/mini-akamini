@@ -93,9 +93,13 @@ class ZivpnService : VpnService() {
         if (vpnInterface != null) return
 
         // 0. Acquire WakeLock to keep CPU alive
-        val pm = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
-        wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ZIVPN::WatchdogLock")
-        wakeLock?.acquire(10 * 60 * 1000L /*10 minutes fallback*/)
+        try {
+            val pm = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "ZIVPN::WatchdogLock")
+            wakeLock?.acquire(10 * 60 * 1000L /*10 minutes fallback*/)
+        } catch (e: Exception) {
+            Log.e("ZIVPN-Tun", "WakeLock acquire failed: ${e.message}")
+        }
 
         Log.i("ZIVPN-Tun", "Initializing ZIVPN (tun2socks engine)...")
         
