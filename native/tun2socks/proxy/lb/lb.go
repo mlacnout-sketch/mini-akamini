@@ -198,10 +198,17 @@ func (l *LoadBalancer) DialContext(ctx context.Context, metadata *M.Metadata) (n
 }
 
 func (l *LoadBalancer) DialUDP(metadata *M.Metadata) (net.PacketConn, error) {
-	// UDP is packet-based, connection tracking is approximate.
-	// For simplicity, we just pick a backend without tracking load/close for UDP.
 	backend := l.NextBackend(metadata)
-	return backend.proxy.DialUDP(metadata)
+	
+	// Track connection for UDP too!
+	backend.IncConn()
+	pc, err := backend.proxy.DialUDP(metadata)
+	if err != nil {
+		backend.DecConn()
+		return nil, err
+	}
+
+	return &trackedPacketConn{PacketConn: pc, backend: backend}, nil
 }
 
 // trackedConn wraps net.Conn to decrement LB counter on close
@@ -216,4 +223,18 @@ func (c *trackedConn) Close() error {
 		c.backend.DecConn()
 	})
 	return c.Conn.Close()
+}
+
+// trackedPacketConn wraps net.PacketConn for UDP tracking
+type trackedPacketConn struct {
+	net.PacketConn
+	backend *Backend
+	once    sync.Once
+}
+
+func (c *trackedPacketConn) Close() error {
+	c.once.Do(func() {
+		c.backend.DecConn()
+	})
+	return c.PacketConn.Close()
 }
