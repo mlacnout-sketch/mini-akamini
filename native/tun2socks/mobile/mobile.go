@@ -40,18 +40,31 @@ func Start(proxy, device, loglevel string, mtu int, udpTimeout int64, snb, rcb s
 
 	// Start Engine Watchdog
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
+			// 1. Send Dummy UDP Packet to keep ISP connection alive
+			sendDummyPacket()
+
+			// 2. Log status
 			if loglevel != "silent" {
-				log.Infof("[Watchdog] Engine Heartbeat: CPU=%d, RAM=%d MB", 
-					time.Now().Unix()%100, // Dummy load indicator
-					getMemUsage())
+				log.Infof("[Watchdog] Heartbeat Sent. Stats: RAM=%d MB", getMemUsage())
 			}
 		}
 	}()
 
 	return engine.Run()
+}
+
+func sendDummyPacket() {
+	// Send to a stable IP (Cloudflare DNS)
+	addr, _ := net.ResolveUDPAddr("udp", "1.1.1.1:53")
+	conn, err := net.DialUDP("udp", nil, addr)
+	if err == nil {
+		defer conn.Close()
+		// Small 24-byte dummy DNS-like query or just random data
+		conn.Write([]byte("ZIVPN-TURBO-KEEP-ALIVE"))
+	}
 }
 
 func getMemUsage() uint64 {
