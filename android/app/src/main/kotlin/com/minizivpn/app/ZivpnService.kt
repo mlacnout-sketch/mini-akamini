@@ -5,8 +5,6 @@ import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import android.app.PendingIntent
-import android.os.Handler
-import android.os.Looper
 import java.net.InetAddress
 import java.util.LinkedList
 import androidx.annotation.Keep
@@ -60,10 +58,6 @@ class ZivpnService : VpnService() {
     }
 
     private fun logToApp(msg: String) {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-        val currentLevel = prefs.getString("log_level", "info") ?: "info"
-        if (currentLevel == "silent") return
-
         val intent = Intent(ACTION_LOG)
         intent.putExtra("message", msg)
         sendBroadcast(intent)

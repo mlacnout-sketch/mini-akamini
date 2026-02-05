@@ -482,9 +482,11 @@ class _SettingsTabState extends State<SettingsTab> {
   final _obfsCtrl = TextEditingController();
   final _mtuCtrl = TextEditingController();
   
-  String _udpProtocol = "BadVPN"; // BadVPN, GOST
-  double _coreCount = 4.0;
+  bool _autoTuning = true;
   bool _autoReconnect = true;
+  String _bufferSize = "4m";
+  String _logLevel = "info";
+  double _coreCount = 4.0;
 
   @override
   void initState() {
@@ -499,8 +501,6 @@ class _SettingsTabState extends State<SettingsTab> {
       _authCtrl.text = prefs.getString('auth') ?? "";
       _obfsCtrl.text = prefs.getString('obfs') ?? "hu``hqb`c";
       _mtuCtrl.text = prefs.getString('mtu') ?? "1500";
-      _udpGatewayCtrl.text = prefs.getString('udp_gateway') ?? "127.0.0.1:7300";
-      _udpProtocol = prefs.getString('udp_protocol') ?? "BadVPN";
       _autoTuning = prefs.getBool('auto_tuning') ?? true;
       _autoReconnect = prefs.getBool('auto_reconnect') ?? true;
       _bufferSize = prefs.getString('buffer_size') ?? "4m";
@@ -515,8 +515,6 @@ class _SettingsTabState extends State<SettingsTab> {
     await prefs.setString('auth', _authCtrl.text);
     await prefs.setString('obfs', _obfsCtrl.text);
     await prefs.setString('mtu', _mtuCtrl.text);
-    await prefs.setString('udp_gateway', _udpGatewayCtrl.text);
-    await prefs.setString('udp_protocol', _udpProtocol);
     await prefs.setBool('auto_tuning', _autoTuning);
     await prefs.setBool('auto_reconnect', _autoReconnect);
     await prefs.setString('buffer_size', _bufferSize);
