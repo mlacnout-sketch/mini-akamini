@@ -94,6 +94,7 @@ class MainActivity: FlutterActivity() {
                 // Advanced Settings
                 val mtu = call.argument<Int>("mtu") ?: 1500
                 val autoTuning = call.argument<Boolean>("auto_tuning") ?: true
+                val autoReconnect = call.argument<Boolean>("auto_reconnect") ?: true
                 val bufferSize = call.argument<String>("buffer_size") ?: "4m"
                 val logLevel = call.argument<String>("log_level") ?: "info"
                 val coreCount = call.argument<Int>("core_count") ?: 4
@@ -110,6 +111,7 @@ class MainActivity: FlutterActivity() {
                     .putString("proxy_url", proxyUrl)
                     .putInt("mtu", mtu)
                     .putBoolean("auto_tuning", autoTuning)
+                    .putBoolean("auto_reconnect", autoReconnect)
                     .putString("buffer_size", bufferSize)
                     .putString("log_level", logLevel)
                     .putInt("core_count", coreCount)

@@ -131,6 +131,7 @@ class ZivpnService : VpnService() {
         val multiplier = prefs.getFloat("multiplier", 1.0f)
         val mtu = prefs.getInt("mtu", 1500)
         val autoTuning = prefs.getBoolean("auto_tuning", true)
+        val autoReconnect = prefs.getBoolean("auto_reconnect", true)
         val bufferSize = prefs.getString("buffer_size", "4m") ?: "4m"
         val logLevel = prefs.getString("log_level", "info") ?: "info"
         val coreCount = prefs.getInt("core_count", 4)
