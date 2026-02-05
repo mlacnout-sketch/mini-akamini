@@ -204,7 +204,8 @@ class ZivpnService : VpnService() {
                     // NEW INTERNAL LOAD BALANCER FORMAT
                     val ports = (0 until coreCount).map { 20080 + it }
                     val lbTargets = ports.joinToString(",") { "127.0.0.1:$it" }
-                    val proxyUrl = "lb://$lbTargets?type=socks5"
+                    // Use Least Connection (lc) strategy for smarter load distribution
+                    val proxyUrl = "lb://$lbTargets?type=socks5&strategy=lc"
                     
                     // Combined Options String to ensure JNI stability
                     val options = "autotune=$autoTuning,reconnect=$autoReconnect"
